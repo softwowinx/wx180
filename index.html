@@ -298,6 +298,45 @@
       .cards{grid-template-columns:1fr;}
       .section-header{flex-direction:column;}
     }
+    /* ---- Barra de cartera ---- */
+    .cartera-bar{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+      padding:10px 22px;border-bottom:1px solid var(--line);
+      background:rgba(16,19,26,.7);backdrop-filter:blur(6px);
+    }
+    .cb-left,.cb-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+    .cb-label{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+    .cb-select{width:auto;min-width:220px;max-width:420px;padding:8px 12px;border-radius:999px;font-size:13px;}
+    .cb-del{padding:8px 12px;font-size:12px;}
+    .cb-count{font-size:12px;color:var(--muted);font-family:var(--font-mono);}
+    .sync{font-size:12px;font-family:var(--font-mono);color:var(--muted);}
+    .sync.saving{color:var(--warn);}
+    .sync.error{color:var(--danger);}
+    .sync.ok{color:var(--ok);}
+    .user{display:flex;align-items:center;gap:8px;font-size:12px;}
+    .user-email{color:var(--text);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);}
+    .user-out{padding:6px 12px;font-size:12px;}
+    .user-local{color:var(--warn);font-family:var(--font-mono);border:1px solid rgba(255,207,92,.3);border-radius:999px;padding:4px 10px;}
+
+    /* ---- Overlay de login ---- */
+    .login-overlay{
+      display:none;position:fixed;inset:0;z-index:1000;
+      align-items:center;justify-content:center;padding:24px;
+      background:rgba(4,5,7,.86);backdrop-filter:blur(8px);
+    }
+    .login-overlay.open{display:flex;}
+    .login-card{
+      width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);
+      border-radius:var(--radius);padding:28px;box-shadow:var(--shadow);
+      display:flex;flex-direction:column;gap:14px;
+    }
+    .login-card h2{margin:0;font-size:20px;}
+    .login-card>p{margin:0;color:var(--muted);font-size:13px;line-height:1.5;}
+    .login-field{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);}
+    .login-btn{margin-top:4px;}
+    .login-err{color:var(--danger);font-size:13px;min-height:18px;}
+    .login-note{margin:0;color:var(--muted);font-size:11px;line-height:1.5;}
+
     @media print{
       header,.side,.header-actions,.no-print{display:none!important}
       body{background:white;color:#111}
@@ -333,6 +372,19 @@
       </div>
     </div>
   </header>
+
+  <div class="cartera-bar no-print" id="carteraBar">
+    <div class="cb-left">
+      <span class="cb-label">Cartera</span>
+      <select id="oppSelect" class="cb-select" title="Cambiar de oportunidad"></select>
+      <button class="ghost cb-del" id="btnDeleteOpp" title="Borrar esta oportunidad">Borrar</button>
+      <span class="cb-count" id="oppCount"></span>
+    </div>
+    <div class="cb-right">
+      <span class="sync ok" id="syncState"></span>
+      <span class="user" id="userBox"></span>
+    </div>
+  </div>
 
   <nav class="layer-tabs" id="layerTabs">
     <button class="layer-tab" data-layer="catalogo"><span class="ltnum">1</span><span>Catálogo<small>Qué producimos</small></span></button>
@@ -485,7 +537,7 @@
     </main>
   </div>
 
-  <p class="footer-note">WX180 · Herramienta interna. Los datos se guardan en localStorage del navegador; no se envían a ningún servidor.</p>
+  <p class="footer-note">WX180 · Herramienta interna. Con sesión iniciada, la cartera se guarda en la nube (Supabase) y se comparte con el equipo. Sin Supabase configurado, se guarda solo en este navegador.</p>
 
   <div class="modal-overlay" id="helpModal">
     <div class="guide" role="dialog" aria-modal="true" aria-label="Guía de uso WX180">
@@ -502,8 +554,27 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const STORAGE_KEY = 'wx180_crm_brief_online_v1';
+
+    // ====== CONFIGURACIÓN SUPABASE ======
+    // URL pública del proyecto y clave "anon public". Ambas son públicas; la
+    // seguridad real la dan las políticas RLS (ver supabase_schema.sql).
+    // Si SUPABASE_ANON_KEY queda vacía, el portal funciona en MODO LOCAL
+    // (cartera guardada solo en este navegador, sin login).
+    const SUPABASE_URL = 'https://osekocswbfcaiyyimvvu.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zZWtvY3N3YmZjYWl5eWltdnZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzODU5MzIsImV4cCI6MjA5NTk2MTkzMn0.-_mNvnW0tFO1q7xbkU6wK7vxsjocEdS_wx3tPDzfgWg';
+
+    // Claves de almacenamiento local (modo sin Supabase / respaldo).
+    const LOCAL_CARTERA = 'wx180_cartera_v2'; // { items:[{id,cliente,...,data}], currentId }
+
+    // Estado de la capa de datos.
+    let sb = null;        // cliente supabase (si está configurado)
+    let online = false;   // true si hay sesión Supabase activa
+    let session = null;   // sesión auth de Supabase
+    let currentId = null; // id de la oportunidad abierta
+    let cartera = [];      // metadatos de la cartera para el selector
 
     const clientTypes = ['Federación','Marca','Ayuntamiento','Club','Evento','Agencia','Plataforma','Institución','Deportista / Representante','Destino turístico','Otro'];
     const stages = [
@@ -659,18 +730,15 @@
       {id:'notas_generales', type:'textarea', label:'Notas generales', full:true}
     ];
 
-    let state = loadState();
-    let currentStage = state.__currentStage || 'lead';
+    let state = {};
+    let currentStage = 'lead';
 
-    function loadState(){
-      try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e){ return {}; }
-    }
     function saveState(){
       state.__currentStage = currentStage;
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e){ /* almacenamiento no disponible: se mantiene en memoria */ }
       updateDashboard();
       renderSummary();
       if(currentStage === 'presupuesto_modular' && document.getElementById('budgetResult')) renderBudget();
+      schedulePersist();
     }
     function getVal(id){ return state[id] || ''; }
     function setVal(id,val){ state[id]=val; saveState(); }
@@ -681,7 +749,7 @@
     function seedBudgetDefaults(){
       let changed=false;
       Object.keys(budgetDefaults).forEach(k=>{ if(state[k]===undefined || state[k]===''){ state[k]=budgetDefaults[k]; changed=true; } });
-      if(changed){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){} }
+      if(changed){ schedulePersist(); }
     }
     function bnum(v){ const n=parseFloat(String(v).replace(',','.')); return isFinite(n)?n:0; }
     function pctFromLabel(s){ const m=String(s||'').match(/([0-9]+)%/); return m?parseFloat(m[1])/100:0; }
@@ -981,14 +1049,7 @@
     });
     document.getElementById('btnPrint').addEventListener('click',()=>window.print());
     document.getElementById('btnRefreshSummary').addEventListener('click',renderSummary);
-    document.getElementById('btnNew').addEventListener('click',()=>{
-      if(confirm('¿Crear una nueva oportunidad? Se borrarán los datos guardados en este navegador. Exporta antes si quieres conservarlos.')){
-        state = {};
-        currentStage = 'lead';
-        localStorage.removeItem(STORAGE_KEY);
-        renderAll();
-      }
-    });
+    document.getElementById('btnNew').addEventListener('click',()=>{ createOpportunity(); });
 
     // ====== CAPA 1: CATÁLOGO ======
     const formats = [
@@ -1079,7 +1140,7 @@
       document.querySelectorAll('#layerTabs .layer-tab').forEach(t=>t.classList.toggle('active', t.dataset.layer===layer));
       if(layer==='catalogo') renderCatalog();
       if(layer==='produccion') renderProduction();
-      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+      schedulePersist();
       window.scrollTo({top:0, behavior:'smooth'});
     }
     document.querySelectorAll('#layerTabs .layer-tab').forEach(t=>t.addEventListener('click',()=>switchLayer(t.dataset.layer)));
@@ -1088,7 +1149,7 @@
     const guideSections = [
       {id:'g_intro', title:'Qué es', tag:'Empieza aquí · 2 min', h:'Bienvenido al portal WX180.', html:`
         <p>Esta no es solo una calculadora ni un CRM. Es el <b>manual operativo vivo</b> de la productora: define <b>qué vendemos</b>, nos guía para <b>venderlo igual cada vez</b> y ordena <b>cómo lo fabricamos</b>.</p>
-        <p>Todo está en una sola página, repartido en tres capas que se abren desde las pestañas de arriba. Lo que escribes se guarda solo en este navegador; nada se envía a ningún servidor.</p>
+        <p>Todo está en una sola página, repartido en tres capas que se abren desde las pestañas de arriba. Las oportunidades se gestionan desde la <b>cartera</b> (selector de la barra superior) y, con sesión iniciada, se guardan en la nube y se comparten con el equipo.</p>
         <div class="gc-cards">
           <div class="gc-card"><div class="gcn">01</div><h4>Catálogo</h4><p>Qué producimos y qué no.</p></div>
           <div class="gc-card"><div class="gcn">02</div><h4>Venta</h4><p>Cómo cualificamos y presupuestamos.</p></div>
@@ -1112,13 +1173,13 @@
         <p>Cuando un proyecto está vendido, pasa por las <b>7 etapas de fábrica</b>, siempre en orden. Pulsa cada una para ver qué controlar y márcala como completada (hay un contador de avance).</p>
         <p>Tres etapas son <b>puerta</b> y van marcadas en rojo: <b>preproducción</b> (no se rueda sin plan), <b>rodaje</b> (backup en set siempre) y <b>QA en visor</b> (no se entrega sin verlo en el dispositivo real). Son los mínimos que no se saltan.</p>`},
       {id:'g_guardar', title:'Guardar y exportar', tag:'Tus datos', h:'Dónde quedan los datos.', html:`
-        <p>Todo se guarda automáticamente en <b>este navegador</b>. Si abres la herramienta en otro equipo o borras los datos del navegador, no estará. Para conservar o compartir una oportunidad, usa los botones de arriba:</p>
+        <p>Todo se guarda <b>automáticamente</b> (verás el estado en "Guardado…" arriba a la derecha). Con sesión iniciada, la cartera vive en la nube y la ve todo el equipo desde cualquier equipo. Sin Supabase configurado, se guarda solo en este navegador. Además puedes exportar con los botones de arriba:</p>
         <ul class="gc-steps">
           <li><span class="gs-k">Copiar</span><span>Copia el resumen al portapapeles.</span></li>
           <li><span class="gs-k">CSV / JSON</span><span>Descarga la oportunidad para archivarla o cargarla en otra herramienta.</span></li>
           <li><span class="gs-k">→ wowinX</span><span>Genera un CSV de <b>contacto</b> con las columnas exactas del importador de wowinX, listo para subir en su pestaña <b>Importar</b>.</span></li>
           <li><span class="gs-k">PDF</span><span>Imprime o guarda como PDF para enviar.</span></li>
-          <li><span class="gs-k">Nueva</span><span><b>Nueva oportunidad</b> borra los datos actuales: exporta antes si quieres guardarlos.</span></li>
+          <li><span class="gs-k">Nueva</span><span><b>Nueva oportunidad</b> añade una a la cartera sin borrar las demás. <b>Borrar</b> (junto al selector) elimina la oportunidad abierta.</span></li>
         </ul>`},
       {id:'g_flujo', title:'Cómo usarla a diario', tag:'En la práctica', h:'El recorrido recomendado.', html:`
         <p>Para una oportunidad nueva, este es el camino corto:</p>
@@ -1161,7 +1222,320 @@
       switchLayer(state.__layer || 'venta');
     }
 
-    renderAll();
+    // ====== CAPA DE DATOS: cartera local + Supabase ======
+    function uuid(){
+      return (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+        : 'id-' + Date.now().toString(16) + '-' + Math.floor(Math.random()*1e9).toString(16);
+    }
+
+    function serializeCurrent(){
+      const data = Object.assign({}, state);
+      data.__currentStage = currentStage;
+      const importe = state.presupuesto_total > 0 ? state.presupuesto_total
+        : (bnum(state.importe_estimado_global) || null);
+      return {
+        id: currentId,
+        cliente: (state.cliente || '').trim(),
+        etapa_actual: state.etapa_actual || '',
+        owner: state.owner || '',
+        importe: importe,
+        data: data
+      };
+    }
+
+    // ---- Cartera local (modo sin Supabase / migración de la ficha única antigua) ----
+    function localRecord(id, data){
+      const r = serializeFrom(data);
+      r.id = id;
+      r.updated_at = new Date().toISOString();
+      r.data = data;
+      return r;
+    }
+    function serializeFrom(data){
+      const importe = (data.presupuesto_total > 0) ? data.presupuesto_total
+        : (parseFloat(String(data.importe_estimado_global||'').replace(',','.')) || null);
+      return {
+        cliente: (data.cliente || '').trim(),
+        etapa_actual: data.etapa_actual || '',
+        owner: data.owner || '',
+        importe: importe
+      };
+    }
+    function localReadCartera(){
+      let store = null;
+      try { store = JSON.parse(localStorage.getItem(LOCAL_CARTERA)); } catch(e){}
+      if(!store || !Array.isArray(store.items)){
+        store = {items:[], currentId:null};
+        // Migrar la ficha única antigua, si existía.
+        let legacy = null;
+        try { legacy = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch(e){}
+        if(legacy && typeof legacy === 'object' && Object.keys(legacy).length){
+          const id = uuid();
+          store.items.push(localRecord(id, legacy));
+          store.currentId = id;
+        }
+        localWriteCartera(store);
+      }
+      return store;
+    }
+    function localWriteCartera(store){ try{ localStorage.setItem(LOCAL_CARTERA, JSON.stringify(store)); }catch(e){} }
+
+    // ---- API unificada ----
+    async function fetchCartera(){
+      if(online){
+        // La tabla guarda todo en `data` (JSONB); derivamos las etiquetas de ahí.
+        const { data, error } = await sb.from('opportunities')
+          .select('id,updated_at,data')
+          .order('updated_at', { ascending:false });
+        if(error){ console.error('fetchCartera', error); setSyncState('error'); return cartera; }
+        return (data || []).map(r => {
+          const d = r.data || {};
+          return {
+            id: r.id,
+            updated_at: r.updated_at,
+            cliente: (d.cliente || '').trim(),
+            etapa_actual: d.etapa_actual || '',
+            owner: d.owner || '',
+            importe: (d.presupuesto_total > 0 ? d.presupuesto_total : (bnum(d.importe_estimado_global) || null))
+          };
+        });
+      }
+      const store = localReadCartera();
+      return store.items.slice()
+        .sort((a,b)=> String(b.updated_at||'').localeCompare(String(a.updated_at||'')))
+        .map(({id,cliente,etapa_actual,owner,importe,updated_at})=>({id,cliente,etapa_actual,owner,importe,updated_at}));
+    }
+
+    async function openOpportunity(id){
+      if(!id || id === currentId) return;
+      await flushPersist();
+      let data = {};
+      if(online){
+        const { data:row, error } = await sb.from('opportunities').select('data').eq('id', id).single();
+        if(error){ console.error('openOpportunity', error); alert('No se pudo abrir la oportunidad: '+error.message); return; }
+        data = (row && row.data) || {};
+      } else {
+        const store = localReadCartera();
+        const rec = store.items.find(i=>i.id===id);
+        data = rec ? rec.data : {};
+        store.currentId = id; localWriteCartera(store);
+      }
+      currentId = id;
+      state = data || {};
+      currentStage = state.__currentStage || 'lead';
+      renderAll();
+      refreshCarteraUI();
+    }
+
+    async function createOpportunity(){
+      await flushPersist();
+      const id = uuid();
+      if(online){
+        const { error } = await sb.from('opportunities').insert({ id, data:{} });
+        if(error){ console.error('createOpportunity', error); alert('No se pudo crear en Supabase: '+error.message); return; }
+      } else {
+        const store = localReadCartera();
+        store.items.unshift(localRecord(id, {}));
+        store.currentId = id; localWriteCartera(store);
+      }
+      currentId = id;
+      state = {};
+      currentStage = 'lead';
+      cartera = await fetchCartera();
+      renderAll();
+      refreshCarteraUI();
+      switchLayer('venta');
+      const el = document.getElementById('cliente'); if(el) el.focus();
+    }
+
+    async function deleteOpportunity(id){
+      if(online){
+        const { error } = await sb.from('opportunities').delete().eq('id', id);
+        if(error){ alert('No se pudo borrar: '+error.message); return; }
+      } else {
+        const store = localReadCartera();
+        store.items = store.items.filter(i=>i.id!==id);
+        if(store.currentId===id) store.currentId = (store.items[0] && store.items[0].id) || null;
+        localWriteCartera(store);
+      }
+      const wasCurrent = (id === currentId);
+      cartera = await fetchCartera();
+      if(wasCurrent){
+        if(cartera.length){ await openOpportunity(cartera[0].id); }
+        else { await createOpportunity(); }
+      } else {
+        refreshCarteraUI();
+      }
+    }
+
+    // ---- Guardado con rebote (debounce) ----
+    let persistTimer = null;
+    let persistInFlight = null;
+    function schedulePersist(){
+      if(!currentId) return;
+      setSyncState('saving');
+      if(persistTimer) clearTimeout(persistTimer);
+      persistTimer = setTimeout(()=>{ persistTimer = null; persistNow(); }, 700);
+    }
+    async function persistNow(){
+      if(!currentId) return;
+      const rec = serializeCurrent();
+      if(online){
+        // Todo el detalle (incluidos cliente/etapa/owner/importe) viaja dentro de `data`.
+        persistInFlight = sb.from('opportunities').update({
+          data: rec.data, updated_at: new Date().toISOString()
+        }).eq('id', currentId).then(({error})=>{
+          if(error){ console.error('persist', error); setSyncState('error'); }
+          else setSyncState('ok');
+        });
+        await persistInFlight; persistInFlight = null;
+      } else {
+        const store = localReadCartera();
+        const i = store.items.findIndex(x=>x.id===currentId);
+        const updated = localRecord(currentId, rec.data);
+        if(i>=0) store.items[i] = updated; else store.items.unshift(updated);
+        store.currentId = currentId;
+        localWriteCartera(store);
+        setSyncState('ok');
+      }
+      updateCarteraOption(rec);
+    }
+    async function flushPersist(){
+      if(persistTimer){ clearTimeout(persistTimer); persistTimer = null; await persistNow(); }
+      if(persistInFlight){ try{ await persistInFlight; }catch(e){} }
+    }
+    window.addEventListener('beforeunload', ()=>{ if(persistTimer){ persistTimer=null; persistNow(); } });
+
+    // ---- UI de la cartera ----
+    function oppLabel(o){
+      const name = (o.cliente || '').trim() || '(sin nombre)';
+      return name + (o.etapa_actual ? ' · ' + o.etapa_actual : '');
+    }
+    function refreshCarteraUI(){
+      const sel = document.getElementById('oppSelect');
+      if(sel){
+        sel.innerHTML = cartera.length
+          ? cartera.map(o=>`<option value="${escapeHtml(o.id)}" ${o.id===currentId?'selected':''}>${escapeHtml(oppLabel(o))}</option>`).join('')
+          : '<option value="">(sin oportunidades)</option>';
+        if(currentId) sel.value = currentId;
+      }
+      const count = document.getElementById('oppCount');
+      if(count) count.textContent = cartera.length + (cartera.length===1 ? ' oportunidad' : ' oportunidades');
+    }
+    function updateCarteraOption(rec){
+      const o = cartera.find(x=>x.id===rec.id);
+      if(o){ o.cliente=rec.cliente; o.etapa_actual=rec.etapa_actual; o.owner=rec.owner; o.importe=rec.importe; }
+      refreshCarteraUI();
+    }
+    function setSyncState(s){
+      const el = document.getElementById('syncState'); if(!el) return;
+      if(s==='saving'){ el.textContent='Guardando…'; el.className='sync saving'; }
+      else if(s==='error'){ el.textContent='Error al guardar'; el.className='sync error'; }
+      else { el.textContent = online ? 'Guardado en la nube' : 'Guardado (local)'; el.className='sync ok'; }
+    }
+
+    // ---- Autenticación ----
+    function showLogin(){ const o=document.getElementById('loginOverlay'); if(o) o.classList.add('open'); }
+    function hideLogin(){ const o=document.getElementById('loginOverlay'); if(o) o.classList.remove('open'); }
+    function authConfigured(){ return !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase); }
+    function authError(msg){
+      const m = String(msg||'');
+      if(/Invalid login/i.test(m)) return 'Email o contraseña incorrectos.';
+      if(/Email not confirmed/i.test(m)) return 'La cuenta no está confirmada. Pide al administrador que la confirme en Supabase.';
+      return m || 'No se pudo iniciar sesión.';
+    }
+    async function doLogin(email, password){
+      const errEl = document.getElementById('loginError');
+      const btn = document.getElementById('loginBtn'); if(btn) btn.disabled = true;
+      try {
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        if(error){ if(errEl) errEl.textContent = authError(error.message); return; }
+        session = data.session; online = true;
+        await startApp();
+      } finally { if(btn) btn.disabled = false; }
+    }
+    async function doLogout(){
+      await flushPersist();
+      try { if(sb) await sb.auth.signOut(); } catch(e){}
+      session = null; online = false; currentId = null; cartera = [];
+      showLogin();
+    }
+    function updateUserUI(){
+      const box = document.getElementById('userBox'); if(!box) return;
+      if(online && session && session.user){
+        box.innerHTML = `<span class="user-email" title="${escapeHtml(session.user.email||'')}">${escapeHtml(session.user.email||'sesión')}</span>`
+          + `<button class="ghost user-out" id="btnLogout">Salir</button>`;
+        const b = document.getElementById('btnLogout'); if(b) b.onclick = doLogout;
+      } else {
+        box.innerHTML = `<span class="user-local" title="Sin Supabase: los datos se guardan solo en este navegador">Modo local</span>`;
+      }
+    }
+
+    function wireDataLayerUI(){
+      const sel = document.getElementById('oppSelect');
+      if(sel) sel.addEventListener('change', e=>{ if(e.target.value) openOpportunity(e.target.value); });
+      const del = document.getElementById('btnDeleteOpp');
+      if(del) del.addEventListener('click', async ()=>{
+        if(!currentId) return;
+        const o = cartera.find(x=>x.id===currentId);
+        const name = (o && o.cliente) ? o.cliente : 'esta oportunidad';
+        if(confirm(`¿Borrar "${name}"? Esta acción no se puede deshacer.`)) await deleteOpportunity(currentId);
+      });
+      const form = document.getElementById('loginForm');
+      if(form) form.addEventListener('submit', async e=>{
+        e.preventDefault();
+        const email = document.getElementById('loginEmail').value.trim();
+        const pass = document.getElementById('loginPass').value;
+        const errEl = document.getElementById('loginError'); if(errEl) errEl.textContent = '';
+        await doLogin(email, pass);
+      });
+    }
+
+    async function startApp(){
+      hideLogin();
+      updateUserUI();
+      setSyncState('ok');
+      cartera = await fetchCartera();
+      if(cartera.length){ await openOpportunity(cartera[0].id); }
+      else { await createOpportunity(); }
+    }
+
+    async function boot(){
+      wireDataLayerUI();
+      if(authConfigured()){
+        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        try {
+          const { data:{ session:s } } = await sb.auth.getSession();
+          session = s;
+        } catch(e){ console.error('getSession', e); }
+        if(!session){ updateUserUI(); showLogin(); return; }
+        online = true;
+        await startApp();
+      } else {
+        // Modo local: sin login, cartera en este navegador.
+        online = false;
+        await startApp();
+      }
+    }
+
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
   </script>
+
+  <div class="login-overlay no-print" id="loginOverlay">
+    <form class="login-card" id="loginForm">
+      <h2>WX180 · Acceso del equipo</h2>
+      <p>Entra con tu cuenta para ver y gestionar la cartera compartida de oportunidades.</p>
+      <label class="login-field">Email
+        <input type="email" id="loginEmail" autocomplete="username" required placeholder="tu@email.com">
+      </label>
+      <label class="login-field">Contraseña
+        <input type="password" id="loginPass" autocomplete="current-password" required placeholder="••••••••">
+      </label>
+      <div class="login-err" id="loginError"></div>
+      <button class="primary login-btn" id="loginBtn" type="submit">Entrar</button>
+      <p class="login-note">¿Sin cuenta? El administrador la crea en Supabase (Authentication → Users).</p>
+    </form>
+  </div>
 </body>
 </html>

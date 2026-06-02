@@ -19,22 +19,38 @@ a wowinX por exportación de contactos (ver más abajo).
 
 - Archivo único `index.html`, estático, pensado para GitHub Pages (repo propio,
   público, archivo en la raíz como `index.html`).
-- Datos en `localStorage` del navegador (clave `wx180_crm_brief_online_v1`).
-  Implicación: cada persona ve solo sus datos. No hay cartera compartida todavía.
-- Fase actual: **validación en GitHub Pages** con el equipo (cada uno por su lado)
-  antes de montar persistencia compartida.
+- **Cartera multi-oportunidad**: ya no es una sola ficha. Hay un selector de cartera
+  en la barra superior (`#oppSelect`) para cambiar de oportunidad, "Nueva oportunidad"
+  crea sin borrar las demás, y "Borrar" elimina la abierta.
+- **Persistencia en dos modos** (decididos en runtime, ver capa de datos abajo):
+  - **Supabase** (cartera compartida con login) cuando hay `SUPABASE_URL` +
+    `SUPABASE_ANON_KEY` y sesión activa. Fuente de verdad.
+  - **Local** (este navegador, sin login) si falta configuración Supabase. Clave
+    `wx180_cartera_v2` = `{items:[{id,cliente,...,data}], currentId}`. Migra
+    automáticamente la ficha única antigua (`wx180_crm_brief_online_v1`).
 
-## Siguiente paso pactado: Supabase
+## Supabase (IMPLEMENTADO — pendiente de configurar)
 
-Cuando termine la validación, añadir **Supabase** para:
-- login del equipo,
-- cartera de oportunidades compartida (sustituir localStorage por base de datos),
-- dejar de exportar CSV a mano.
+La integración ya está en el código. Para activarla en producción quedan **2 pasos
+manuales** (no se pueden hacer desde el repo):
 
-Restricción técnica: GitHub Pages sirve solo estáticos, así que la conexión a
-Supabase va **desde el navegador** (supabase-js + clave pública anon) con políticas
-RLS bien definidas. La misma URL de Pages sigue sirviendo; solo se añade la capa de
-datos. NO empezar Supabase hasta que la validación confirme qué campos sobran/faltan.
+1. **Usuarios**: crear las cuentas del equipo en Authentication → Users → "Add user"
+   (con "Auto Confirm User"). El registro abierto está desactivado (correcto).
+2. **(Recomendado) Políticas**: ejecutar `supabase_schema.sql` una vez en el SQL
+   Editor. Es idempotente y no borra datos; garantiza las políticas RLS de cartera
+   compartida para usuarios autenticados y el trigger de `updated_at`.
+
+La clave `anon` y la `SUPABASE_URL` ya están puestas en `index.html`. La tabla
+`opportunities` existe con esquema **solo-JSONB** (`id, created_at, updated_at,
+created_by, data`): todo el detalle del brief vive en `data` y el cliente deriva
+nombre/etapa para el listado desde ahí. RLS verificado: el anónimo no lee ni escribe.
+
+Restricción técnica: GitHub Pages sirve solo estáticos, así que la conexión va
+**desde el navegador** (supabase-js por CDN + clave pública anon) con RLS. La anon key
+es pública por diseño; la seguridad la dan las políticas.
+
+Login: pantalla `#loginOverlay` (email + contraseña) que bloquea la app cuando hay
+Supabase configurado y no hay sesión.
 
 ## Arquitectura del archivo
 
@@ -53,7 +69,21 @@ Todo el JS está inline al final del archivo. Funciones clave:
 - `switchLayer()` — conmuta vistas y persiste la capa activa.
 - `renderGuide()` / `openHelp()` — guía de uso (botón "?").
 - `toWowinxContacts()` — exporta el contacto al formato de wowinX.
-- `saveState()` / `loadState()` — persistencia en localStorage.
+- `saveState()` — actualiza UI y dispara `schedulePersist()` (guardado con rebote).
+
+### Capa de datos (cartera + Supabase)
+- `boot()` — arranque: configura cliente Supabase, comprueba sesión, decide
+  online/local y llama a `startApp()` (o muestra login).
+- `fetchCartera()` / `openOpportunity(id)` / `createOpportunity()` /
+  `deleteOpportunity(id)` — API unificada (misma firma en local y online).
+- `serializeCurrent()` — empaqueta `state` + metadatos para guardar una fila.
+- `schedulePersist()` / `persistNow()` / `flushPersist()` — guardado con rebote
+  (~700 ms); `flushPersist()` fuerza el guardado antes de cambiar de oportunidad.
+- `doLogin()` / `doLogout()` / `updateUserUI()` — autenticación.
+- `refreshCarteraUI()` / `setSyncState()` — selector de cartera e indicador de
+  guardado.
+- `currentId` = oportunidad abierta; `cartera` = metadatos del selector;
+  `online`/`session`/`sb` = estado de Supabase.
 
 ## Reglas de diseño (NO romper)
 

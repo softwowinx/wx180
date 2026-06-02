@@ -17,15 +17,24 @@ contactos en CSV.
 
 ## Cómo se usa
 
-Abrir `index.html` en el navegador (o la URL de GitHub Pages). Los datos se
-guardan en `localStorage` del propio navegador, así que **cada persona ve solo
-sus datos**; todavía no hay cartera compartida.
+Abrir `index.html` en el navegador (o la URL de GitHub Pages). Hay una **cartera
+multi-oportunidad**: el selector de la barra superior cambia de oportunidad,
+"Nueva oportunidad" crea una más y "Borrar" elimina la abierta.
+
+Funciona en dos modos según la configuración:
+
+- **Cartera compartida (Supabase)**: con login del equipo; todos ven y editan la
+  misma cartera. Es el modo de producción.
+- **Local** (si no hay Supabase configurado): la cartera se guarda solo en este
+  navegador, sin login. Útil para probar.
 
 ## Estado
 
-Fase de **validación en GitHub Pages** con el equipo. El siguiente paso pactado
-es añadir **Supabase** (login del equipo + cartera compartida) sustituyendo el
-`localStorage`, con conexión desde el navegador y políticas RLS.
+Integración con **Supabase** ya implementada en el código (login del equipo +
+cartera compartida vía `supabase-js` desde el navegador con políticas RLS). Para
+activarla quedan dos pasos manuales: ejecutar [`supabase_schema.sql`](supabase_schema.sql)
+en el proyecto y pegar la clave `anon` en `SUPABASE_ANON_KEY` de `index.html`
+(ver [`CLAUDE.md`](CLAUDE.md)). Sin esa configuración, el portal usa el modo local.
 
 ## Documentación
 
