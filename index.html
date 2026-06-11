@@ -277,7 +277,30 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // Carga de supabase-js con CDN primario + respaldo. Si el primero falla
+    // (bloqueo de red, caída del CDN), prueba el siguiente. Resuelve cuando
+    // window.supabase está disponible, o a false tras agotar la lista (modo local).
+    window.loadSupabaseJs = (function(){
+      var CDNS = [
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',  // primario
+        'https://unpkg.com/@supabase/supabase-js@2'              // respaldo
+      ];
+      var promise = null;
+      function tryLoad(i){
+        return new Promise(function(resolve){
+          if(window.supabase) return resolve(true);
+          if(i >= CDNS.length){ console.error('supabase-js: ningún CDN disponible → modo local'); return resolve(false); }
+          var s = document.createElement('script');
+          s.src = CDNS[i];
+          s.onload = function(){ window.supabase ? resolve(true) : tryLoad(i+1).then(resolve); };
+          s.onerror = function(){ console.warn('supabase-js: falló', CDNS[i], '→ probando respaldo'); tryLoad(i+1).then(resolve); };
+          document.head.appendChild(s);
+        });
+      }
+      return function(){ return promise || (promise = tryLoad(0)); };
+    })();
+  </script>
   <script>
     // ====== CONFIGURACIÓN SUPABASE ======
     // URL pública y clave "anon public". La seguridad real la dan las políticas RLS.
@@ -974,6 +997,7 @@
     }
     async function boot(){
       wireDataLayerUI();
+      await window.loadSupabaseJs();   // CDN primario + respaldo antes de usar window.supabase
       if(authConfigured()){
         sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         // Enlaces de email: supabase-js procesa el token de la URL y emite el evento.
