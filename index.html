@@ -283,7 +283,8 @@
     // window.supabase está disponible, o a false tras agotar la lista (modo local).
     window.loadSupabaseJs = (function(){
       var CDNS = [
-        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',  // primario
+        './vendor/supabase.min.js',                             // autoalojado (mismo dominio, sin CDN)
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',  // respaldo
         'https://unpkg.com/@supabase/supabase-js@2'              // respaldo
       ];
       var promise = null;
