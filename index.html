@@ -884,6 +884,7 @@
       document.getElementById('pwdNew2').value = '';
       document.getElementById('pwdModal').classList.add('open');
     }
+    function wirePwdUI(){
     document.getElementById('btnPwdClose').addEventListener('click', ()=>document.getElementById('pwdModal').classList.remove('open'));
     document.getElementById('btnPwdSave').addEventListener('click', async ()=>{
       const a = document.getElementById('pwdNew').value, b = document.getElementById('pwdNew2').value;
@@ -896,6 +897,7 @@
       msg.textContent = 'Contraseña guardada.';
       setTimeout(()=>document.getElementById('pwdModal').classList.remove('open'), 900);
     });
+    }
 
     // ---- Gestor de usuarios (super admin → Edge Function 'admin-users') ----
     async function adminCall(payload){
@@ -950,6 +952,7 @@
       document.getElementById('adminModal').classList.add('open');
       renderUsers();
     }
+    function wireAdminUI(){
     document.getElementById('btnAdminClose').addEventListener('click', ()=>document.getElementById('adminModal').classList.remove('open'));
     document.getElementById('btnAdmCreate').addEventListener('click', async ()=>{
       const email = document.getElementById('admEmail').value.trim();
@@ -965,7 +968,9 @@
       try { await adminCall({ action:'invite', email, redirectTo: SITE_URL }); adminFeedback('', 'Invitación enviada a ' + email + ' (el enlace le pedirá fijar su contraseña).'); document.getElementById('admEmail').value=''; renderUsers(); }
       catch(e){ adminFeedback(e.message); }
     });
+    }
     function wireDataLayerUI(){
+      wirePwdUI(); wireAdminUI();
       const sel = document.getElementById('oppSelect');
       if(sel) sel.addEventListener('change', e=>{ if(e.target.value) openOpportunity(e.target.value); });
       const del = document.getElementById('btnDeleteOpp');
